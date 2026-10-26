@@ -29,7 +29,7 @@ Una **arquitectura de 3 capas (Three-Tier Architecture)** es un patrón de dise�
 * **Capa de Aplicación:** HAProxy Maestro y Esclavo con Keepalived (VIP flotante vía VRRP `172.31.0.250`) + 3 nodos API Node.js.
 * **Capa de Datos:** MariaDB Galera Cluster de 3 nodos (catálogo maestro síncrono `wsrep`) + MongoDB 8 (críticas y reseñas de usuarios) + Redis 7 (caché en memoria del Top 10 de películas).
 * **Entregables:**
-  1. [Diagrama de Arquitectura en formato JPG](./architecture_diagram.jpeg) (estilo Lucidchart).
+  1. [Diagrama de Arquitectura en formato JPG](./architecture_diagram.jpeg).
   2. Documentación técnica y reportes de pruebas en Markdown.
   3. Archivos de configuración e IaC completos (Docker Compose, HAProxy, Keepalived, Nginx, Node.js).
   4. Suites de automatización y reportes para las 3 Pruebas de Concepto (**PoC**):
@@ -65,7 +65,6 @@ Inicie todos los servicios del sistema distribuido:
 ```bash
 docker compose up --build -d
 ```
-> **Nota:** La primera ejecución esperará a que `galera1` complete el bootstrap para inicializar el catálogo de películas y las críticas iniciales en MongoDB a través del servicio efímero `catalog-init`.
 
 ### Paso 3: Verificar Contenedores
 ```bash
@@ -119,7 +118,7 @@ Inyecta fallos aleatorios en caliente sobre contenedores de las 3 capas durante 
   ```bash
   python3 ./scripts/chaos_monkey.py --rounds 5 --interval 5
   ```
-* 📄 **Reporte Completo:** [Informe General de Resultados](https://github.com/dangwii/sistemadistribuido3capas/wiki/Informe-de-PoC-del-Sistema).
+* **Reporte Completo:** [Informe General de Resultados](https://github.com/dangwii/sistemadistribuido3capas/wiki/Informe-de-PoC-del-Sistema).
 
 ---
 
@@ -127,4 +126,4 @@ Inyecta fallos aleatorios en caliente sobre contenedores de las 3 capas durante 
 
 * **Resiliencia:** El sistema tolera la pérdida simultánea de servidores web, instancias de API y nodos del clúster Galera gracias a la replicación de estados, quórum síncrono y sondas de autocuración de HAProxy.
 * **Alta Disponibilidad:** Pares HAProxy/Keepalived con migración de VIP en menos de 2 segundos y pasarela Entry-Proxy, eliminando puntos únicos de fallo (SPOF) en todas las capas.
-* **Escalabilidad:** Separación modular por capas con balanceo Round-Robin verificado y protección de bases de datos mediante caché en memoria Redis (>710 RPS soportados).
+* **Escalabilidad:** Separación modular por capas con balanceo Round-Robin verificado y protección de bases de datos mediante caché en memoria Redis.
