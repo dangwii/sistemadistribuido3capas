@@ -2,6 +2,8 @@
 
 ---
 
+Proyecto hecho por: Mariana Vianey Castro Mendez y Daniel Gustavo Tec Kau
+
 ## 1. Introducción a la Arquitectura de 3 Capas
 
 Una **arquitectura de 3 capas (Three-Tier Architecture)** es un patrón de diseño de sistemas distribuidos que organiza una aplicación en tres niveles lógicos y funcionales independientes:
