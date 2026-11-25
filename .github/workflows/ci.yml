@@ -83,10 +83,11 @@ jobs:
           tags: mini-imdb-${{ matrix.service }}:ci
 
       - name: Scan image with Trivy
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: mini-imdb-${{ matrix.service }}:ci
-          format: table
-          exit-code: "0"
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:latest image \
+            --format table \
+            --exit-code 0 \
+            --severity CRITICAL,HIGH \
+            --ignore-unfixed \
+            mini-imdb-${{ matrix.service }}:ci
