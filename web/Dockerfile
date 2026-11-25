@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM nginxinc/nginx-unprivileged:1.27-alpine
+FROM nginxinc/nginx-unprivileged:1.31-alpine
 
 LABEL org.opencontainers.image.source="https://github.com/dangwii/sistemadistribuido3capas" \
       org.opencontainers.image.description="Mini-IMDb Web Frontend (Nginx Unprivileged)" \
