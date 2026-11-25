@@ -14,7 +14,7 @@
     "@opentelemetry/sdk-metrics": "^2.0.0",
     "@opentelemetry/sdk-node": "^0.200.0",
     "@opentelemetry/semantic-conventions": "^1.32.0",
-    "amqplib": "^0.10.5",
+    "amqplib": "^2.4.0",
     "mongodb": "^6.17.0",
     "mysql2": "^3.14.1",
     "redis": "^5.5.6"
