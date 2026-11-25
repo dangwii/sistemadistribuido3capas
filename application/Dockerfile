@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:1
-FROM node:22-alpine AS deps
+FROM node:26-alpine AS deps
 
 WORKDIR /app
 COPY package.json ./
 RUN npm install --omit=dev && npm cache clean --force
 
-FROM node:22-alpine AS runtime
+FROM node:26-alpine AS runtime
 
 LABEL org.opencontainers.image.source="https://github.com/dangwii/sistemadistribuido3capas" \
       org.opencontainers.image.description="Mini-IMDb Distributed API (Node.js)" \
