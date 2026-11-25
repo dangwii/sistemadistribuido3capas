@@ -1,0 +1,23 @@
+# Manifiesto de TLS para Ingress usando cert-manager
+# Instalar cert-manager previamente en producción:
+#   kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: mini-imdb-selfsigned
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: mini-imdb-tls
+  namespace: mini-imdb
+spec:
+  secretName: mini-imdb-tls-secret
+  issuerRef:
+    name: mini-imdb-selfsigned
+    kind: ClusterIssuer
+  dnsNames:
+    - localhost
+    - mini-imdb.local

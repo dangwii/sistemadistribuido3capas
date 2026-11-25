@@ -1,0 +1,47 @@
+{
+  "exchange": {
+    "name": "mini_imdb.events",
+    "type": "topic",
+    "durable": true
+  },
+  "dead_letter_exchange": {
+    "name": "mini_imdb.dlx",
+    "type": "direct",
+    "durable": true
+  },
+  "queues": [
+    {
+      "name": "reviews.created",
+      "routing_key": "reviews.created",
+      "durable": true,
+      "dead_letter_exchange": "mini_imdb.dlx",
+      "dead_letter_routing_key": "reviews.dlq",
+      "schema": {
+        "idempotencyKey": "uuid-v4",
+        "movieCode": "string (e.g. MOV-001)",
+        "reviewer": "string (1..80)",
+        "rating": "integer (1..5)",
+        "comment": "string (1..1000)",
+        "createdAt": "ISO-8601 timestamp"
+      }
+    },
+    {
+      "name": "reviews.dlq",
+      "routing_key": "reviews.dlq",
+      "durable": true,
+      "description": "Dead-letter queue for malformed or permanently failed review messages"
+    },
+    {
+      "name": "catalog.changed",
+      "routing_key": "catalog.changed",
+      "durable": true,
+      "description": "Invalidates scoped Redis cache keys when catalog changes"
+    },
+    {
+      "name": "catalog.refresh",
+      "routing_key": "catalog.refresh",
+      "durable": true,
+      "description": "Single-consumer cache warm-up to protect MariaDB against cache stampedes"
+    }
+  ]
+}

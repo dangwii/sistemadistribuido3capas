@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: mini-imdb
+resources:
+  - security-hardening.yaml
+  - configmap.yaml
+  - catalog-sql-configmap.yaml
+  - web.yaml
+  - api.yaml
+  - worker.yaml
+  - ingress.yaml
+  - catalog-init-job.yaml
+  - network-policies.yaml

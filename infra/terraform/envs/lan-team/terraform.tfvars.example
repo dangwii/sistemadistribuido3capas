@@ -1,0 +1,10 @@
+# Copia este archivo a terraform.tfvars (no subir a Git) y coloca las IPs LAN reales
+# de las VMs en el salón:
+#   - PC 1 (Daniel): server_ip + primer agent_ip (2 nodos)
+#   - PC 2 (Mariana): segundo agent_ip (1 nodo)
+# Ejecuta con: $env:TF_VAR_k3s_token="tu-token-seguro"; terraform apply
+
+server_ip            = "192.168.1.101"
+agent_ips            = ["192.168.1.102", "192.168.1.103"]
+ssh_user             = "ubuntu"
+ssh_private_key_path = "~/.ssh/id_ed25519"

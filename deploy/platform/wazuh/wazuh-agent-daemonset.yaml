@@ -1,0 +1,61 @@
+# DaemonSet de agentes Wazuh: despliega 1 agente por cada nodo K3s para monitoreo
+# de integridad de archivos (FIM), detección de anomalías y registro en wazuh-manager.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: wazuh-agent
+  namespace: security
+  labels:
+    app: wazuh-agent
+spec:
+  selector:
+    matchLabels:
+      app: wazuh-agent
+  template:
+    metadata:
+      labels:
+        app: wazuh-agent
+    spec:
+      containers:
+        - name: wazuh-agent
+          image: ubuntu:24.04
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update -qq && apt-get install -y -qq curl gnupg apt-transport-https >/dev/null
+              curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import
+              chmod 644 /usr/share/keyrings/wazuh.gpg
+              echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" > /etc/apt/sources.list.d/wazuh.list
+              apt-get update -qq
+              WAZUH_MANAGER="wazuh-manager.security.svc.cluster.local" WAZUH_AGENT_NAME="${NODE_NAME}" apt-get install -y -qq wazuh-agent >/dev/null
+              /var/ossec/bin/wazuh-control start
+              tail -f /var/ossec/logs/ossec.log
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 384Mi
+          volumeMounts:
+            - name: host-etc
+              mountPath: /host/etc
+              readOnly: true
+            - name: host-var-log
+              mountPath: /host/var/log
+              readOnly: true
+      volumes:
+        - name: host-etc
+          hostPath:
+            path: /etc
+        - name: host-var-log
+          hostPath:
+            path: /var/log

@@ -24,3 +24,11 @@ credentials.json
 backups/
 **/backups/
 
+# Terraform local cache and state files.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars.local
+
+

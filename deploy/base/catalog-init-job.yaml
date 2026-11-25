@@ -1,0 +1,52 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: catalog-init
+  namespace: mini-imdb
+  labels:
+    app: catalog-init
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app: catalog-init
+        tier: application
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: catalog-init
+          image: ghcr.io/dangwii/mini-imdb-api:v2.2.0
+          imagePullPolicy: IfNotPresent
+          command: ["node", "init-db.js"]
+          envFrom:
+            - configMapRef:
+                name: mini-imdb-config
+            - secretRef:
+                name: mini-imdb-secrets
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 192Mi
+          volumeMounts:
+            - name: catalog-sql
+              mountPath: /sql
+              readOnly: true
+      volumes:
+        - name: catalog-sql
+          configMap:
+            name: catalog-sql

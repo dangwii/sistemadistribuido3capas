@@ -1,4 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
+import amqp from "amqplib";
 import { MongoClient } from "mongodb";
 import mysql from "mysql2/promise";
 import { createClient } from "redis";
@@ -11,7 +13,12 @@ const required = (name) => {
   return value;
 };
 
-// 3.4: Connection-pool tuning: 10 conexiones máx por réplica de API
+const APP_PORT = Number(process.env.PORT || 8080);
+const APP_HOST = process.env.HOST || "0.0.0.0";
+const APP_VERSION = process.env.APP_VERSION || "2.2.0";
+const CACHE_TTL_SECONDS = Number(process.env.CACHE_TTL_SECONDS || 60);
+
+// 3.4: Connection-pool tuning: 10 conexiones máx por réplica de API (12-factor via env)
 const pool = mysql.createPool({
   host: required("DB_HOST"),
   port: Number(process.env.DB_PORT || 3306),
@@ -19,38 +26,85 @@ const pool = mysql.createPool({
   user: required("DB_USER"),
   password: required("DB_PASSWORD"),
   waitForConnections: true,
-  connectionLimit: 10,
-  maxIdle: 10,
+  connectionLimit: Number(process.env.DB_CONNECTION_LIMIT || 10),
+  maxIdle: Number(process.env.DB_CONNECTION_LIMIT || 10),
   idleTimeout: 60000,
   queueLimit: 0,
   enableKeepAlive: true,
   keepAliveInitialDelay: 0,
 });
 
-// 2.1: Soporte para MongoDB Replica Set (rs0) con tolerancia a fallos
-const mongoHosts = required("MONGO_HOST");
-const mongoUri = mongoHosts.includes(",")
-  ? `mongodb://${mongoHosts}/${encodeURIComponent(required("MONGO_DB"))}?replicaSet=rs0&authSource=admin&readPreference=primaryPreferred`
-  : `mongodb://${mongoHosts}:${Number(process.env.MONGO_PORT || 27017)}/${encodeURIComponent(required("MONGO_DB"))}`;
+// 2.1: Soporte para MongoDB Replica Set (rs0) o MONGO_URI 12-factor
+const mongoAuthSource = process.env.MONGO_AUTH_SOURCE || "admin";
+const mongoReplicaSet = process.env.MONGO_REPLICA_SET || "rs0";
+const mongoUri = process.env.MONGO_URI
+  ? process.env.MONGO_URI
+  : (() => {
+    const mongoHosts = required("MONGO_HOST");
+    return mongoHosts.includes(",")
+      ? `mongodb://${mongoHosts}/${encodeURIComponent(required("MONGO_DB"))}?replicaSet=${encodeURIComponent(mongoReplicaSet)}&authSource=${encodeURIComponent(mongoAuthSource)}&readPreference=primaryPreferred`
+      : `mongodb://${mongoHosts}:${Number(process.env.MONGO_PORT || 27017)}/${encodeURIComponent(required("MONGO_DB"))}?authSource=${encodeURIComponent(mongoAuthSource)}`;
+  })();
 
-const mongo = new MongoClient(mongoUri, {
-  auth: {
-    username: required("MONGO_USER"),
-    password: required("MONGO_PASSWORD"),
-  },
-  authSource: "admin",
+const mongoOptions = {
+  authSource: mongoAuthSource,
   serverSelectionTimeoutMS: 5000,
   connectTimeoutMS: 5000,
-});
+};
+if (!process.env.MONGO_URI && process.env.MONGO_USER) {
+  mongoOptions.auth = {
+    username: required("MONGO_USER"),
+    password: required("MONGO_PASSWORD"),
+  };
+}
+const mongo = new MongoClient(mongoUri, mongoOptions);
 
-// 2.2: Conexión a Redis HA vía database-lb
-const redis = createClient({
-  socket: {
-    host: required("REDIS_HOST"),
-    port: Number(process.env.REDIS_PORT || 6379),
-  },
-});
+// 2.2: Conexión a Redis HA (12-factor via REDIS_URL o REDIS_HOST/REDIS_PORT)
+const redis = process.env.REDIS_URL
+  ? createClient({ url: process.env.REDIS_URL })
+  : createClient({
+    password: process.env.REDIS_PASSWORD || undefined,
+    socket: {
+      host: required("REDIS_HOST"),
+      port: Number(process.env.REDIS_PORT || 6379),
+    },
+  });
 redis.on("error", (error) => console.error("Redis client error:", error));
+
+// Fase 3: Publicador opcional a RabbitMQ (cuando RABBITMQ_URL está definida en Kubernetes)
+const RABBITMQ_EXCHANGE = "mini_imdb.events";
+let rabbitConn = null;
+let rabbitChannel = null;
+
+const connectRabbit = async () => {
+  const rabbitUrl = process.env.RABBITMQ_URL;
+  if (!rabbitUrl) return;
+  try {
+    rabbitConn = await amqp.connect(rabbitUrl);
+    rabbitConn.on("error", (err) => console.error("API RabbitMQ error:", err.message));
+    rabbitConn.on("close", () => {
+      rabbitChannel = null;
+      setTimeout(() => void connectRabbit(), 3000);
+    });
+    rabbitChannel = await rabbitConn.createChannel();
+    await rabbitChannel.assertExchange(RABBITMQ_EXCHANGE, "topic", { durable: true });
+    console.log("Mini-IMDb API connected to RabbitMQ exchange:", RABBITMQ_EXCHANGE);
+  } catch (err) {
+    rabbitChannel = null;
+    console.warn("RabbitMQ not ready yet for API publisher; retrying in 3s:", err.message);
+    setTimeout(() => void connectRabbit(), 3000);
+  }
+};
+
+const publishEvent = (routingKey, payload) => {
+  if (!rabbitChannel) return false;
+  return rabbitChannel.publish(
+    RABBITMQ_EXCHANGE,
+    routingKey,
+    Buffer.from(JSON.stringify(payload)),
+    { persistent: true, contentType: "application/json" },
+  );
+};
 
 class HttpError extends Error {
   constructor(statusCode, message, trace) {
@@ -88,6 +142,7 @@ const sendJson = (response, statusCode, payload, trace = []) => {
 
 const start = async () => {
   await Promise.all([mongo.connect(), redis.connect()]);
+  void connectRabbit();
   const reviews = mongo.db(required("MONGO_DB")).collection("movie_reviews");
   const moviesCacheKey = "imdb:movies:top";
 
@@ -102,25 +157,41 @@ const start = async () => {
     void (async () => {
       const pathname = new URL(request.url, "http://localhost").pathname;
 
-      if (request.method === "GET" && pathname === "/health") {
+      // Liveness probe (Kubernetes): confirma que el proceso HTTP está vivo
+      if (request.method === "GET" && pathname === "/healthz") {
+        sendJson(response, 200, {
+          status: "alive",
+          service: "mini-imdb-api",
+          version: APP_VERSION,
+          node: process.env.APPLICATION_NODE || process.env.HOSTNAME || "app-node",
+        }, trace);
+        return;
+      }
+
+      // Readiness probe (Kubernetes) y /health (compatibilidad HAProxy/Nagios)
+      if (request.method === "GET" && (pathname === "/readyz" || pathname === "/health")) {
         await Promise.all([pool.query("SELECT 1"), mongo.db().command({ ping: 1 }), redis.ping()]);
         sendJson(response, 200, {
           status: "ok",
           service: "mini-imdb-api",
-          database_proxy: "database-lb (Galera Cluster 3-nodes)",
-          mongodb_topology: "Replica Set (rs0)",
+          version: APP_VERSION,
+          database_proxy: process.env.DB_HOST,
+          mongodb_topology: process.env.MONGO_URI ? "Custom URI" : `Replica Set (${mongoReplicaSet})`,
           redis_mode: "High-Availability Persistent Cache",
-        }, [...trace, "database-lb (galera)", "mongo-rs0", "database-lb (redis)"]);
+          rabbitmq: process.env.RABBITMQ_URL ? (rabbitChannel ? "connected" : "connecting") : "disabled",
+        }, [...trace, `${process.env.DB_HOST} (mariadb)`, "mongo", `${process.env.REDIS_HOST || "redis"} (redis)`]);
         return;
       }
 
       if (request.method === "GET" && pathname === "/") {
         sendJson(response, 200, {
           service: "mini-imdb-api",
-          version: "2.1.0",
+          version: APP_VERSION,
           top_movies: "/movies/top",
           movie_reviews: "/movies/{code}/reviews",
           health: "/health",
+          healthz: "/healthz",
+          readyz: "/readyz",
         }, trace);
         return;
       }
@@ -142,19 +213,25 @@ const start = async () => {
         );
 
         trace.push("redis (cache write)");
-        await redis.set(moviesCacheKey, JSON.stringify(movies), { EX: 60 });
+        await redis.set(moviesCacheKey, JSON.stringify(movies), { EX: CACHE_TTL_SECONDS });
         sendJson(response, 200, movies, trace);
         return;
       }
 
-      // Purga de Caché
+      // Purga de Caché (y publicación de eventos catalog.changed + catalog.refresh en RabbitMQ)
       if (request.method === "POST" && pathname === "/cache/clear") {
         const removed = await redis.del(moviesCacheKey);
+        const queuedInvalidation = publishEvent("catalog.changed", { cacheKey: moviesCacheKey, requestedAt: new Date().toISOString() });
+        const queuedRefresh = publishEvent("catalog.refresh", { cacheKey: moviesCacheKey, requestedAt: new Date().toISOString() });
         sendJson(
           response,
           200,
-          { cacheKey: moviesCacheKey, cacheEntryRemoved: removed === 1 },
-          [...trace, "database-lb (redis del)"],
+          {
+            cacheKey: moviesCacheKey,
+            cacheEntryRemoved: removed === 1,
+            asyncEventsPublished: queuedInvalidation && queuedRefresh,
+          },
+          [...trace, "redis (del)", ...(queuedRefresh ? ["rabbitmq (catalog.refresh)"] : [])],
         );
         return;
       }
@@ -205,14 +282,26 @@ const start = async () => {
         }
 
         const review = {
+          idempotencyKey: request.headers["idempotency-key"] || randomUUID(),
           movieCode: reviewMatch[1],
           sku: reviewMatch[1],
           reviewer,
           rating: body.rating,
           comment,
-          createdAt: new Date(),
+          createdAt: new Date().toISOString(),
         };
-        const result = await reviews.insertOne(review);
+
+        if (publishEvent("reviews.created", review)) {
+          sendJson(
+            response,
+            202,
+            { status: "queued", ...review },
+            [...trace, "rabbitmq (reviews.created)"],
+          );
+          return;
+        }
+
+        const result = await reviews.insertOne({ ...review, createdAt: new Date(review.createdAt) });
         sendJson(response, 201, { id: result.insertedId.toString(), ...review }, [...trace, "mongo-rs0 (insert review)"]);
         return;
       }
@@ -235,8 +324,8 @@ const start = async () => {
     });
   });
 
-  server.listen(8080, "0.0.0.0", () => {
-    console.log("Mini-IMDb API listening on port 8080");
+  server.listen(APP_PORT, APP_HOST, () => {
+    console.log(`Mini-IMDb API v${APP_VERSION} listening on ${APP_HOST}:${APP_PORT}`);
   });
 
   const shutdown = () => {

@@ -1,0 +1,45 @@
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageRepository
+metadata:
+  name: mini-imdb-api
+  namespace: flux-system
+spec:
+  image: ghcr.io/dangwii/mini-imdb-api
+  interval: 5m0s
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImagePolicy
+metadata:
+  name: mini-imdb-api
+  namespace: flux-system
+spec:
+  imageRepositoryRef:
+    name: mini-imdb-api
+  policy:
+    semver:
+      range: ">=2.0.0"
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageUpdateAutomation
+metadata:
+  name: mini-imdb-images
+  namespace: flux-system
+spec:
+  interval: 10m0s
+  sourceRef:
+    kind: GitRepository
+    name: mini-imdb
+  git:
+    checkout:
+      ref:
+        branch: main
+    commit:
+      author:
+        email: fluxcdbot@users.noreply.github.com
+        name: fluxcdbot
+      messageTemplate: "chore(gitops): update container images"
+    push:
+      branch: main
+  update:
+    path: ./deploy/overlays/prod
+    strategy: Setters

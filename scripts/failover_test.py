@@ -96,8 +96,9 @@ def main():
         print("   Observando migración VRRP / VIP...")
         time.sleep(5)
 
-        print("\n3. Restaurando 'presentation-lb-master'...")
+        print("\n3. Restaurando 'presentation-lb-master' y su Keepalived...")
         run_command("docker compose start presentation-lb-master")
+        run_command("docker compose restart presentation-keepalived-master")
         time.sleep(4)
 
         print("\n4. Inyectando falla: Deteniendo 'application-lb-master'...")
@@ -105,8 +106,9 @@ def main():
         print("   Observando migración VRRP de Capa de Aplicación...")
         time.sleep(5)
 
-        print("\n5. Restaurando 'application-lb-master'...")
+        print("\n5. Restaurando 'application-lb-master' y su Keepalived...")
         run_command("docker compose start application-lb-master")
+        run_command("docker compose restart application-keepalived-master")
         time.sleep(4)
 
         print("\n6. Inyectando falla en nodos de cómputo: Deteniendo 'web1' y 'app1'...")

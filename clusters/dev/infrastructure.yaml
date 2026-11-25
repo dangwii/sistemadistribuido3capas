@@ -1,0 +1,31 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: platform-data
+  namespace: flux-system
+spec:
+  interval: 5m0s
+  path: ./deploy/platform/data
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: mini-imdb
+  wait: true
+  timeout: 3m0s
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: platform-rabbitmq
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: platform-data
+  interval: 5m0s
+  path: ./deploy/platform/rabbitmq
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: mini-imdb
+  wait: true
+  timeout: 3m0s

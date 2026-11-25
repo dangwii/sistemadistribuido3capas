@@ -34,25 +34,37 @@ const connectToMariaDb = async () => {
 
 const connection = await connectToMariaDb();
 
-const mongoHosts = required("MONGO_HOST");
-const mongoUri = mongoHosts.includes(",")
-  ? `mongodb://${mongoHosts}/${encodeURIComponent(required("MONGO_DB"))}?replicaSet=rs0&authSource=admin&readPreference=primaryPreferred`
-  : `mongodb://${mongoHosts}:${Number(process.env.MONGO_PORT || 27017)}/${encodeURIComponent(required("MONGO_DB"))}`;
+const mongoAuthSource = process.env.MONGO_AUTH_SOURCE || "admin";
+const mongoReplicaSet = process.env.MONGO_REPLICA_SET || "rs0";
+const mongoUri = process.env.MONGO_URI
+  ? process.env.MONGO_URI
+  : (() => {
+      const mongoHosts = required("MONGO_HOST");
+      return mongoHosts.includes(",")
+        ? `mongodb://${mongoHosts}/${encodeURIComponent(required("MONGO_DB"))}?replicaSet=${encodeURIComponent(mongoReplicaSet)}&authSource=${encodeURIComponent(mongoAuthSource)}&readPreference=primaryPreferred`
+        : `mongodb://${mongoHosts}:${Number(process.env.MONGO_PORT || 27017)}/${encodeURIComponent(required("MONGO_DB"))}?authSource=${encodeURIComponent(mongoAuthSource)}`;
+    })();
 
-const mongo = new MongoClient(mongoUri, {
-  auth: {
-    username: required("MONGO_USER"),
-    password: required("MONGO_PASSWORD"),
-  },
-  authSource: "admin",
+const mongoOptions = {
+  authSource: mongoAuthSource,
   serverSelectionTimeoutMS: 10000,
   connectTimeoutMS: 10000,
-});
+};
+if (!process.env.MONGO_URI && process.env.MONGO_USER) {
+  mongoOptions.auth = {
+    username: required("MONGO_USER"),
+    password: required("MONGO_PASSWORD"),
+  };
+}
+const mongo = new MongoClient(mongoUri, mongoOptions);
 
 try {
-  const schema = await readFile(new URL("./database/catalog.sql", import.meta.url), "utf8");
+  const schemaPath = process.env.CATALOG_SQL_PATH
+    ? process.env.CATALOG_SQL_PATH
+    : new URL("./database/catalog.sql", import.meta.url);
+  const schema = await readFile(schemaPath, "utf8");
   await connection.query(schema);
-  console.log("Mini-IMDb movie catalog schema initialized via database-lb");
+  console.log("Mini-IMDb movie catalog schema initialized");
 } finally {
   await connection.end();
 }
