@@ -34,7 +34,7 @@ spec:
               app: api
       containers:
         - name: api
-          image: ghcr.io/dangwii/mini-imdb-api:v2.2.0
+          image: ghcr.io/dangwii/mini-imdb-api:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080

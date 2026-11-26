@@ -30,9 +30,26 @@ spec:
         app: mariadb
         tier: database
     spec:
+      nodeSelector:
+        kubernetes.io/hostname: k3s-server
       containers:
         - name: mariadb
-          image: mariadb:11.4
+          image: alpine:3.21
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              apk add --no-cache mariadb mariadb-client >/dev/null
+              mkdir -p /run/mysqld /var/lib/mysql
+              chown -R mysql:mysql /run/mysqld /var/lib/mysql
+              if [ ! -d /var/lib/mysql/mysql ]; then
+                mariadb-install-db --user=mysql --datadir=/var/lib/mysql --auth-root-authentication-method=normal --skip-test-db >/dev/null
+              fi
+              printf "FLUSH PRIVILEGES;\nALTER USER 'root'@'localhost' IDENTIFIED BY '%s';\nCREATE DATABASE IF NOT EXISTS \`%s\`;\nCREATE USER IF NOT EXISTS '%s'@'%%' IDENTIFIED BY '%s';\nGRANT ALL PRIVILEGES ON \`%s\`.* TO '%s'@'%%';\nFLUSH PRIVILEGES;\n" \
+                "$MARIADB_ROOT_PASSWORD" "$MARIADB_DATABASE" "$MARIADB_USER" "$MARIADB_PASSWORD" "$MARIADB_DATABASE" "$MARIADB_USER" > /tmp/init.sql
+              chown mysql:mysql /tmp/init.sql
+              exec mariadbd --user=mysql --datadir=/var/lib/mysql --skip-innodb --default-storage-engine=Aria --bind-address=0.0.0.0 --skip-networking=0 --init-file=/tmp/init.sql
           ports:
             - containerPort: 3306
               name: mysql
@@ -62,26 +79,36 @@ spec:
               cpu: 100m
               memory: 192Mi
             limits:
-              cpu: 500m
+              cpu: 1000m
               memory: 512Mi
+          startupProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - mariadb-admin ping -h 127.0.0.1 -u root -p"$MARIADB_ROOT_PASSWORD"
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 30
           readinessProbe:
             exec:
               command:
                 - sh
                 - -c
                 - mariadb-admin ping -h 127.0.0.1 -u root -p"$MARIADB_ROOT_PASSWORD"
-            initialDelaySeconds: 15
             periodSeconds: 10
-            timeoutSeconds: 5
+            timeoutSeconds: 10
+            failureThreshold: 6
           livenessProbe:
             exec:
               command:
                 - sh
                 - -c
                 - mariadb-admin ping -h 127.0.0.1 -u root -p"$MARIADB_ROOT_PASSWORD"
-            initialDelaySeconds: 30
-            periodSeconds: 15
-            timeoutSeconds: 5
+            periodSeconds: 20
+            timeoutSeconds: 10
+            failureThreshold: 6
           volumeMounts:
             - name: mariadb-data
               mountPath: /var/lib/mysql

@@ -27,6 +27,7 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Presentation-LB "k3s-traefik-ingress";
         proxy_set_header X-Web-Node $hostname;
+        proxy_set_header X-Application-LB "k3s-api-service";
     }
 
     location / {

@@ -27,7 +27,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: worker
-          image: ghcr.io/dangwii/mini-imdb-worker:v2.2.0
+          image: ghcr.io/dangwii/mini-imdb-worker:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8081

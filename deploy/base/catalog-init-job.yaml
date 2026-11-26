@@ -22,7 +22,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: catalog-init
-          image: ghcr.io/dangwii/mini-imdb-api:v2.2.0
+          image: ghcr.io/dangwii/mini-imdb-api:latest
           imagePullPolicy: IfNotPresent
           command: ["node", "init-db.js"]
           envFrom:
